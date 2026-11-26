@@ -34,7 +34,7 @@ services:
   frontend:
     build: .
     ports:
-      - "8087:80"
+      - "8087:8080"
     depends_on:
       backend:
         condition: service_healthy
