@@ -1,5 +1,5 @@
 # Node 24 LTS (Node 20 en fin de vie depuis avril 2026)
-FROM node:24-alpine
+FROM node:14-alpine
 
 # Mise à jour des paquets système Alpine
 RUN apk upgrade --no-cache
