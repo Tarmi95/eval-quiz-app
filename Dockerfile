@@ -17,7 +17,12 @@ RUN apk upgrade --no-cache
 # puis on revient à l'utilisateur non privilégié
 USER nginx
 
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+# Adresse du backend : valeur par défaut pour le local (docker compose)
+# Sur Azure, elle est remplacée par la variable BACKEND_HOST=backend
+ENV BACKEND_HOST=backend:3007
+
+# Modèle de configuration : nginx remplace ${BACKEND_HOST} au démarrage
+COPY --chown=nginx:nginx nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 8080
