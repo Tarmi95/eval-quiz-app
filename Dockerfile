@@ -1,5 +1,5 @@
 # ---------- Étape 1 : construction ----------
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -10,6 +10,7 @@ RUN npm run build
 
 # ---------- Étape 2 : image finale ----------
 FROM nginx:alpine
+RUN apk upgrade --no-cache
 
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html

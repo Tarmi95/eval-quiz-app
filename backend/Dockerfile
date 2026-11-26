@@ -1,28 +1,23 @@
-# 1. Image de base
-FROM node:20-alpine
+# Node 24 LTS (Node 20 en fin de vie depuis avril 2026)
+FROM node:24-alpine
 
-# 2. Environnement de production
+# Mise à jour des paquets système Alpine
+RUN apk upgrade --no-cache
+
 ENV NODE_ENV=production
-
-# 3. Dossier de travail
 WORKDIR /app
 
-# 4. Dépendances d'abord (cache Docker)
+# Dépendances, puis suppression de npm/yarn (inutiles à l'exécution)
 COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+           /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
-# 5. Puis le code
 COPY server.js ./
-
-# 6. Sécurité : utilisateur non-root
 USER node
-
-# 7. Port documenté
 EXPOSE 3007
 
-# 8. Vérification de santé
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3007/health || exit 1
 
-# 9. Démarrage
 CMD ["node", "server.js"]
