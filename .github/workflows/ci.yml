@@ -1,0 +1,95 @@
+# =====================================================================
+# CI – Intégration continue de Quiz App (J6-A)
+# Rôle : à chaque Pull Request vers main, construire les 2 images Docker
+#        et les scanner avec Trivy. Une faille CRITICAL bloque la fusion.
+# Ce workflow NE déploie RIEN (le déploiement se fait après fusion, J6-B).
+# =====================================================================
+
+name: CI   # Nom affiché dans l'onglet "Actions" de GitHub
+
+# ---------------------------------------------------------------------
+# Déclencheur : quand le workflow se lance
+# ---------------------------------------------------------------------
+on:
+  pull_request:          # À l'ouverture d'une PR et à chaque nouveau push dessus
+    branches: [main]     # Seulement pour les PR qui ciblent la branche main
+
+# ---------------------------------------------------------------------
+# Droits accordés au workflow (principe du moindre privilège)
+# Il peut seulement LIRE le code : pas d'écriture, pas de secrets utilisés.
+# ---------------------------------------------------------------------
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    # Nom du contrôle affiché dans la PR, ex : "Build & Trivy (backend)"
+    # C'est ce nom qu'on rendra obligatoire dans le ruleset de main.
+    name: Build & Trivy (${{ matrix.service }})
+
+    # Machine virtuelle Linux fournie gratuitement par GitHub
+    runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------
+    # Matrice : le même job est lancé 2 fois en parallèle,
+    # une fois pour le backend, une fois pour le frontend (pas de copier-coller).
+    # -------------------------------------------------------------------
+    strategy:
+      fail-fast: false   # Si un scan échoue, l'autre va quand même jusqu'au bout
+      matrix:
+        include:
+          - service: backend      # Nom utilisé pour l'image et les rapports
+            context: ./backend    # Dossier qui contient backend/Dockerfile
+          - service: frontend
+            context: .            # Racine du projet : Dockerfile du frontend
+
+    steps:
+      # ---------------------------------------------------------------
+      # Étape 1 : récupérer le code de la PR sur la machine GitHub
+      # ---------------------------------------------------------------
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # Étape 2 : construire l'image Docker
+      # -t = nom de l'image, tagué avec le SHA du commit (traçabilité :
+      # on sait exactement quel commit a produit quelle image)
+      # ---------------------------------------------------------------
+      - name: Construire l'image
+        run: docker build -t quiz-${{ matrix.service }}:${{ github.sha }} ${{ matrix.context }}
+
+      # ---------------------------------------------------------------
+      # Étape 3 : scanner l'image avec Trivy (contrôle BLOQUANT)
+      # Version FIXÉE à v0.35.0 : en mars 2026, les autres tags de cette
+      # action ont été piratés (CVE-2026-33634). v0.35.0 est la version sûre.
+      # PAS de "continue-on-error" : sinon l'échec serait ignoré.
+      # ---------------------------------------------------------------
+      - name: Scan Trivy (bloquant sur CRITICAL)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: image                                       # On scanne une image Docker
+          image-ref: quiz-${{ matrix.service }}:${{ github.sha }} # L'image construite à l'étape 2
+          severity: CRITICAL                                     # On ne retient que les failles CRITICAL
+          exit-code: "1"                                         # Faille trouvée -> code 1 -> job en échec -> PR bloquée
+          format: table                                          # Rapport lisible sous forme de tableau
+          output: trivy-${{ matrix.service }}.txt                # Rapport enregistré dans un fichier
+
+      # ---------------------------------------------------------------
+      # Étape 4 : afficher le rapport dans les logs GitHub
+      # if: always() = s'exécute MÊME si le scan a échoué
+      # (c'est justement là qu'on veut voir les failles)
+      # ---------------------------------------------------------------
+      - name: Afficher le rapport
+        if: always()
+        run: cat trivy-${{ matrix.service }}.txt
+
+      # ---------------------------------------------------------------
+      # Étape 5 : sauvegarder le rapport comme "artifact"
+      # Téléchargeable depuis la page de l'exécution -> preuve pour J6
+      # ---------------------------------------------------------------
+      - name: Sauvegarder le rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.service }}
+          path: trivy-${{ matrix.service }}.txt
